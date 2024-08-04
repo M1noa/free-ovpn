@@ -6,7 +6,6 @@ const express = require('express');
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
 const GITHUB_REPO = 'M1noa/free-ovpn';
 const GITHUB_BRANCH = 'vpn-list-api';
 const GITHUB_FILE_PATH = 'ipspeed.json';
@@ -117,8 +116,9 @@ app.get('/ipspeed.json', async (req, res) => {
     res.json(vpnData);
 });
 
-// Start the Express server
-app.listen(PORT, async () => {
-    await initializeVPNData(); // Fetch and update VPN data on startup
-    console.log(`Server is running on http://localhost:${PORT}`);
+// Start the server
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  await initializeVPNData(); // Fetch and update VPN data on startup
+  console.log(`Server running on port ${port}`);
 });
