@@ -95,6 +95,11 @@ const initializeVPNData = async () => {
     await updateGitHubFile(vpnData);
 };
 
+// Serve the index.html file
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/index.html');
+});
+
 // Express endpoint to serve the JSON data
 app.get('/ipspeed.json', async (req, res) => {
     requestCount++;
