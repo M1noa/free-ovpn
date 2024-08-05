@@ -67,10 +67,10 @@ const fetchGitHubVPNFiles = async () => {
 
         // Creating a format similar to the fetched VPN data
         const gitHubVPNData = fileNames.map(fileName => ({
-            country: 'GitHub Repo',
+            country: 'USA',
             ovpnLinks: [`https://github.com/M1noa/free-ovpn/raw/vpn-list-api/conf/${fileName}`], // Direct link to the OVPN file
-            uptime: 'N/A',
-            ping: 'N/A'
+            uptime: 'Unknown',
+            ping: 'Github Upload'
         }));
 
         console.log(`GitHub OVPN files: ${JSON.stringify(gitHubVPNData, null, 2)}`);
