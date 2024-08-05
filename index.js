@@ -118,7 +118,7 @@ app.get('/ipspeed.json', async (req, res) => {
 
 // Start the server
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  await initializeVPNData(); // Fetch and update VPN data on startup
-  console.log(`Server running on port ${port}`);
+app.listen(port, async () => {
+    await initializeVPNData(); // Fetch and update VPN data on startup
+    console.log(`Server is running on port ${PORT}`);
 });
