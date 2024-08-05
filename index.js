@@ -27,15 +27,20 @@ const fetchVPNData = async () => {
         for (let i = 0; i < rows.length; i += 4) { // Each entry has 4 elements
             const location = $(rows[i]).text().trim();
             const ovpnLinks = $(rows[i + 1]).find('a'); // Find all <a> elements for OVPN links
-            const ovpnLink = ovpnLinks.length > 0 ? `https://ipspeed.info${$(ovpnLinks[0]).attr('href')}` : null; // Get first link
             const uptime = $(rows[i + 2]).text().trim();
             const ping = $(rows[i + 3]).text().trim();
 
-            if (location && ovpnLink) { // Only add if location and link exist
+            // Extracting all OVPN links for the current location
+            const links = [];
+            ovpnLinks.each((index, link) => {
+                const ovpnLink = `https://ipspeed.info${$(link).attr('href')}`; // Complete link
+                links.push(ovpnLink);
+            });
+
+            if (location && links.length > 0) { // Only add if location and links exist
                 newData.push({
                     country: location,
-                    ovpnProfile: ovpnLink.split('/').pop(),
-                    ovpnLink,
+                    ovpnLinks: links, // List of all OVPN links
                     uptime,
                     ping,
                 });
