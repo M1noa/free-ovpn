@@ -96,7 +96,7 @@ const initializeVPNData = async () => {
 
 // Serve the index.html file
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
+    res.sendFile(__dirname + '/index.html');
 });
 
 // Express endpoint to serve the JSON data
@@ -120,5 +120,5 @@ app.get('/ipspeed.json', async (req, res) => {
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
     await initializeVPNData(); // Fetch and update VPN data on startup
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${port}`);
 });
