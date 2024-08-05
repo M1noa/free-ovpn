@@ -55,20 +55,52 @@ const fetchVPNData = async () => {
     }
 };
 
+// Function to fetch OVPN file names from the GitHub repository
+const fetchGitHubVPNFiles = async () => {
+    try {
+        console.log('Requesting OVPN files from GitHub...');
+        const response = await axios.get('https://api.github.com/repos/M1noa/free-ovpn/contents/conf?ref=vpn-list-api');
+        console.log('GitHub response received.');
+
+        const files = response.data;
+        const fileNames = files.map(file => file.name);
+
+        // Creating a format similar to the fetched VPN data
+        const gitHubVPNData = fileNames.map(fileName => ({
+            country: 'GitHub Repo',
+            ovpnLinks: [`https://github.com/M1noa/free-ovpn/raw/vpn-list-api/conf/${fileName}`], // Direct link to the OVPN file
+            uptime: 'N/A',
+            ping: 'N/A'
+        }));
+
+        console.log(`GitHub OVPN files: ${JSON.stringify(gitHubVPNData, null, 2)}`);
+        return gitHubVPNData;
+    } catch (error) {
+        console.error('Error fetching OVPN files from GitHub:', error);
+        return [];
+    }
+};
+
 // Serve the index.html file
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
 // Express endpoint to serve the JSON data
-app.get('/ipspeed.json', async (req, res) => {
-    console.log('Received request for /ipspeed.json');
+app.get('/list.json', async (req, res) => {
+    console.log('Received request for /list.json');
 
     // Fetch new VPN data for every request
-    vpnData = await fetchVPNData();
+    const fetchedVPNData = await fetchVPNData();
 
-    // Serve the current VPN data
-    res.json(vpnData);
+    // Fetch GitHub OVPN file names
+    const gitHubVPNData = await fetchGitHubVPNFiles();
+
+    // Combine the GitHub VPN data and the fetched VPN data
+    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData];
+
+    // Serve the combined VPN data
+    res.json(combinedVPNData);
 });
 
 // Start the server
