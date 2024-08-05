@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Client</title>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Ubuntu', sans-serif;
+            background-color: #020e2a; /* Dark blue */
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 0.5s ease-in;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+        }
+        .container {
+            display: flex;
+            width: 80%;
+            max-width: 1200px;
+        }
+        #vpn-list {
+            overflow-y: auto;
+            max-height: 400px;
+            width: 30%; /* Less wide */
+            margin-right: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: white;
+            padding: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease-in; /* On-load animation */
+        }
+        .vpn-button {
+            background-color: #32086ee2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 15px; /* Increased padding for bigger buttons */
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            white-space: normal; /* Allow text to wrap */
+            width: 100%;
+        }
+        .vpn-button:hover {
+            background-color: #3700b3;
+            transform: scale(1.05);
+        }
+        .vpn-info {
+            flex-grow: 1;
+            padding: 10px;
+            background: rgb(231, 231, 231);
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            color: black;
+            width: 80%;
+            animation: fadeIn 0.5s ease-in; /* On-load animation */
+        }
+        /* Search Bar Styles */
+        #search {
+            width: 30%; /* Same size as the VPN list */
+            padding: 10px;
+            border: 2px solid #6200ea;
+            border-radius: 8px;
+            margin-bottom: 10px; /* Smaller margin */
+            transition: border-color 0.3s;
+        }
+        #search:focus {
+            border-color: #3700b3;
+            outline: none;
+        }
+        .log {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>VPN Client</h1>
+    <input type="text" id="search" placeholder="Search VPNs..." oninput="filterVPNs()">
+    <div class="container">
+        <div id="vpn-list"></div>
+        <div class="vpn-info" id="vpn-info">
+            <h2>VPN Details</h2>
+            <p id="country"></p>
+            <p id="uptime"></p>
+            <p id="ping"></p>
+            <label for="ovpn-select">Select OVPN file:</label>
+            <select id="ovpn-select"></select>
+            <button id="connect-button" class="vpn-button" onclick="connectToVpn()">Connect</button>
+            <button id="disconnect-button" class="vpn-button" onclick="disconnectVpn()">Disconnect</button>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+    <script>
+        const socket = io();
+
+        socket.on('log', (logEntry) => {
+            const log = document.getElementById('log');
+            log.innerHTML += logEntry.replace(/OpenVPN Output: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /g, '') + '<br>';
+            log.scrollTop = log.scrollHeight;
+        });
+
+        let vpnProfiles = [];
+
+        async function fetchVpnProfiles() {
+            try {
+                const response = await fetch('/vpn-profiles');
+                vpnProfiles = await response.json();
+                displayVpnProfiles(vpnProfiles);
+            } catch (error) {
+                console.error('Error fetching VPN profiles:', error);
+            }
+        }
+
+        function displayVpnProfiles(profiles) {
+            const vpnList = document.getElementById('vpn-list');
+            vpnList.innerHTML = '';
+
+            profiles.forEach(profile => {
+                const button = document.createElement('button');
+                button.className = 'vpn-button';
+                button.innerHTML = `<strong>${profile.country}</strong> - ${profile.ovpnLinks[0].split('/').pop().split('_')[0]} - Ping: ${profile.ping}`;
+                button.onclick = () => showVpnInfo(profile);
+                vpnList.appendChild(button);
+            });
+        }
+
+        function showVpnInfo(profile) {
+            document.getElementById('country').innerText = `Country: ${profile.country}`;
+            document.getElementById('uptime').innerText = `Uptime: ${profile.uptime}`;
+            document.getElementById('ping').innerText = `Ping: ${profile.ping}`;
+
+            const ovpnSelect = document.getElementById('ovpn-select');
+            ovpnSelect.innerHTML = '';
+            profile.ovpnLinks.forEach(link => {
+                const option = document.createElement('option');
+                option.value = link;
+                option.text = link.split('/').pop();
+                ovpnSelect.appendChild(option);
+            });
+        }
+
+        async function connectToVpn() {
+            const ovpnSelect = document.getElementById('ovpn-select');
+            const profile = ovpnSelect.value;
+
+            try {
+                const response = await fetch('/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ profile })
+                });
+                const message = await response.text();
+                alert(message);
+            } catch (error) {
+                console.error('Error connecting to VPN:', error);
+            }
+        }
+
+        async function disconnectVpn() {
+            try {
+                const response = await fetch('/disconnect', {
+                    method: 'POST'
+                });
+                const message = await response.text();
+                alert(message);
+            } catch (error) {
+                console.error('Error disconnecting from VPN:', error);
+            }
+        }
+
+        function filterVPNs() {
+            const searchInput = document.getElementById('search').value.toLowerCase();
+            const filteredProfiles = vpnProfiles.filter(profile =>
+                profile.country.toLowerCase().includes(searchInput) ||
+                profile.ovpnLinks.some(link => link.toLowerCase().includes(searchInput))
+            );
+            displayVpnProfiles(filteredProfiles);
+        }
+
+        window.onload = fetchVpnProfiles;
+    </script>
+</body>
+</html>
