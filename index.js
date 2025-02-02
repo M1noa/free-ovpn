@@ -11,8 +11,8 @@ const cache = new NodeCache({ stdTTL: 3600 }); // Cache for 1 hour
 
 // Function to fetch VPN data from ipspeed.info
 const fetchVPNData = async () => {
-    const maxRetries = 10;
-    const baseDelay = 15;
+    const maxRetries = 6;
+    const baseDelay = 30;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -161,15 +161,24 @@ app.get('/vpngate/:ip.ovpn', async (req, res) => {
         try {
             const response = await axios.get('http://www.vpngate.net/api/iphone/');
             const csvData = response.data.split('\n').slice(2, -2);
-            const vpnData = csvData.find(line => line.split(',')[3] === ip);
+            const vpnData = csvData.find(line => {
+                const fields = line.split(',');
+                return fields.length >= 4 && fields[1] === ip;
+            });
             
             if (!vpnData) {
                 return res.status(404).send('VPN configuration not found');
             }
             
-            config = Buffer.from(vpnData.split(',')[8], 'base64').toString();
-            cache.set(cacheKey, config);
+            const fields = vpnData.split(',');
+            if (fields.length < 15 || !fields[14]) {
+                return res.status(404).send('Invalid VPN configuration data');
+            }
+            
+            config = Buffer.from(fields[14], 'base64').toString();
+            cache.set(cacheKey, config, 900); // Cache for 15 minutes
         } catch (error) {
+            console.error('Error fetching VPN configuration:', error);
             return res.status(500).send('Error fetching VPN configuration');
         }
     }
@@ -186,14 +195,21 @@ app.get('/', (req, res) => {
 
 // Express endpoint to serve the JSON data
 app.get('/list.json', async (req, res) => {
-    const [fetchedVPNData, freeOpenVPNData, vpnGateData] = await Promise.all([ // removed gitHubVPNData
+    const cacheKey = 'vpn_list_json';
+    const cachedData = cache.get(cacheKey);
+    
+    if (cachedData) {
+        return res.json(cachedData);
+    }
+    
+    const [fetchedVPNData, freeOpenVPNData, vpnGateData] = await Promise.all([
         fetchVPNData(),
-        // github : fetchGitHubVPNFiles(),
         fetchFreeOpenVPNData(),
         fetchVPNGateData()
     ]);
 
-    const combinedVPNData = [...fetchedVPNData, ...freeOpenVPNData, ...vpnGateData]; // removed ...gitHubVPNData,
+    const combinedVPNData = [...fetchedVPNData, ...freeOpenVPNData, ...vpnGateData];
+    cache.set(cacheKey, combinedVPNData, 900); // Cache for 15 minutes
     res.json(combinedVPNData);
 });
 
