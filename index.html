@@ -3,204 +3,305 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VPN Client</title>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400&display=swap" rel="stylesheet">
+    <title>Free OpenVPN Client</title>
     <style>
-        body {
-            font-family: 'Ubuntu', sans-serif;
-            background-color: #020e2a; /* Dark blue */
+        :root {
+            --primary: #6366f1;
+            --secondary: #818cf8;
+            --background: #0f172a;
+            --surface: rgba(30, 41, 59, 0.7);
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2rem;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            animation: fadeIn 0.5s ease-in;
+            gap: 1.5rem;
         }
-        h1 {
-            text-align: center;
-            color: white;
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 1rem;
         }
-        .container {
-            display: flex;
-            width: 80%;
-            max-width: 1200px;
+
+        .search-container {
+            position: relative;
+            margin-bottom: 1rem;
         }
-        #vpn-list {
-            overflow-y: auto;
-            max-height: 400px;
-            width: 30%; /* Less wide */
-            margin-right: 20px;
-            border: 1px solid #ccc;
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            background: white;
-            padding: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            animation: fadeIn 0.5s ease-in; /* On-load animation */
+            color: var(--text);
+            font-size: 0.875rem;
         }
-        .vpn-button {
-            background-color: #32086ee2;
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .server-list {
+            flex: 1;
+            overflow-y: auto;
+            max-height: calc(100vh - 200px);
+            padding-right: 8px;
+        }
+
+        /* Custom scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary);
+        }
+
+        .log-content {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: calc(100vh - 200px);
+            border-radius: 8px;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 1rem;
+            z-index: 1000;
+        }
+
+        .loading-text {
+            color: var(--text);
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+
+        .loading-text span {
+            display: inline-block;
+            animation: shake 1.5s infinite;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateY(0); }
+            25% { transform: translateY(-2px); }
+            75% { transform: translateY(2px); }
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(99, 102, 241, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .server-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .server-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .server-name {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .server-info {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .status-panel {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .status-icon {
+            width: 64px;
+            height: 64px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status-info h2 {
+            margin-bottom: 0.5rem;
+        }
+
+        .status-info p {
+            color: var(--text-secondary);
+        }
+
+        .connect-btn {
+            background: var(--primary);
             color: white;
             border: none;
             border-radius: 8px;
-            padding: 15px; /* Increased padding for bigger buttons */
-            margin: 10px 0;
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            white-space: normal; /* Allow text to wrap */
-            width: 100%;
+            transition: all 0.2s;
         }
-        .vpn-button:hover {
-            background-color: #3700b3;
-            transform: scale(1.05);
+
+        .connect-btn:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
         }
-        .vpn-info {
-            flex-grow: 1;
-            padding: 10px;
-            background: rgb(231, 231, 231);
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            color: black;
-            width: 80%;
-            animation: fadeIn 0.5s ease-in; /* On-load animation */
+
+        .log-panel {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 1.5rem;
+            flex: 1;
         }
-        /* Search Bar Styles */
-        #search {
-            width: 30%; /* Same size as the VPN list */
-            padding: 10px;
-            border: 2px solid #6200ea;
-            border-radius: 8px;
-            margin-bottom: 10px; /* Smaller margin */
-            transition: border-color 0.3s;
+
+        .log-title {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
-        #search:focus {
-            border-color: #3700b3;
-            outline: none;
-        }
-        .log {
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-top: 10px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+
+        .log-content {
+            font-family: monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--text-secondary);
         }
     </style>
-    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <h1>VPN Client</h1>
-    <input type="text" id="search" placeholder="Search VPNs..." oninput="filterVPNs()">
-    <div class="container">
-        <div id="vpn-list"></div>
-        <div class="vpn-info" id="vpn-info">
-            <h2>VPN Details</h2>
-            <p id="country"></p>
-            <p id="uptime"></p>
-            <p id="ping"></p>
-            <label for="ovpn-select">Select OVPN file:</label>
-            <select id="ovpn-select"></select>
-            <button id="connect-button" class="vpn-button" onclick="connectToVpn()">Connect</button>
-            <button id="disconnect-button" class="vpn-button" onclick="disconnectVpn()">Disconnect</button>
-            <div class="log" id="log"></div>
+    <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">
+            <span style="animation-delay: 0.0s">L</span>
+            <span style="animation-delay: 0.1s">o</span>
+            <span style="animation-delay: 0.2s">a</span>
+            <span style="animation-delay: 0.3s">d</span>
+            <span style="animation-delay: 0.4s">i</span>
+            <span style="animation-delay: 0.5s">n</span>
+            <span style="animation-delay: 0.6s">g</span>
+            <span style="animation-delay: 0.7s">.</span>
+            <span style="animation-delay: 0.8s">.</span>
+            <span style="animation-delay: 0.9s">.</span>
         </div>
     </div>
-    <script>
-        const socket = io();
+    <div class="sidebar">
+        <div class="logo">Free OpenVPN</div>
+        <div class="search-container">
+            <input type="text" class="search-input" placeholder="Search servers..." />
+        </div>
+        <div class="server-list">
+            <!-- Server items will be dynamically populated -->
+        </div>
+    </div>
 
-        socket.on('log', (logEntry) => {
-            const log = document.getElementById('log');
-            log.innerHTML += logEntry.replace(/OpenVPN Output: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /g, '') + '<br>';
-            log.scrollTop = log.scrollHeight;
-        });
+    <div class="main-content">
+        <div class="status-panel">
+            <div class="status-icon">
+                <!-- Status icon will be dynamically updated -->
+            </div>
+            <div class="status-info">
+                <h2>Not Connected</h2>
+                <p>Select a server to connect</p>
+            </div>
+            <button class="connect-btn">Connect</button>
+        </div>
 
-        let vpnProfiles = [];
+        <div class="log-panel">
+            <div class="log-title">Connection Log</div>
+            <div class="log-content">
+                <!-- Log content will be dynamically updated -->
+            </div>
+        </div>
+    </div>
 
-        async function fetchVpnProfiles() {
-            try {
-                const response = await fetch('/vpn-profiles');
-                vpnProfiles = await response.json();
-                displayVpnProfiles(vpnProfiles);
-            } catch (error) {
-                console.error('Error fetching VPN profiles:', error);
-            }
-        }
-
-        function displayVpnProfiles(profiles) {
-            const vpnList = document.getElementById('vpn-list');
-            vpnList.innerHTML = '';
-
-            profiles.forEach(profile => {
-                const button = document.createElement('button');
-                button.className = 'vpn-button';
-                button.innerHTML = `<strong>${profile.country}</strong> - ${profile.ovpnLinks[0].split('/').pop().split('_')[0]} - Ping: ${profile.ping}`;
-                button.onclick = () => showVpnInfo(profile);
-                vpnList.appendChild(button);
-            });
-        }
-
-        function showVpnInfo(profile) {
-            document.getElementById('country').innerText = `Country: ${profile.country}`;
-            document.getElementById('uptime').innerText = `Uptime: ${profile.uptime}`;
-            document.getElementById('ping').innerText = `Ping: ${profile.ping}`;
-
-            const ovpnSelect = document.getElementById('ovpn-select');
-            ovpnSelect.innerHTML = '';
-            profile.ovpnLinks.forEach(link => {
-                const option = document.createElement('option');
-                option.value = link;
-                option.text = link.split('/').pop();
-                ovpnSelect.appendChild(option);
-            });
-        }
-
-        async function connectToVpn() {
-            const ovpnSelect = document.getElementById('ovpn-select');
-            const profile = ovpnSelect.value;
-
-            try {
-                const response = await fetch('/connect', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ profile })
-                });
-                const message = await response.text();
-                alert(message);
-            } catch (error) {
-                console.error('Error connecting to VPN:', error);
-            }
-        }
-
-        async function disconnectVpn() {
-            try {
-                const response = await fetch('/disconnect', {
-                    method: 'POST'
-                });
-                const message = await response.text();
-                alert(message);
-            } catch (error) {
-                console.error('Error disconnecting from VPN:', error);
-            }
-        }
-
-        function filterVPNs() {
-            const searchInput = document.getElementById('search').value.toLowerCase();
-            const filteredProfiles = vpnProfiles.filter(profile =>
-                profile.country.toLowerCase().includes(searchInput) ||
-                profile.ovpnLinks.some(link => link.toLowerCase().includes(searchInput))
-            );
-            displayVpnProfiles(filteredProfiles);
-        }
-
-        window.onload = fetchVpnProfiles;
-    </script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
 </body>
 </html>
