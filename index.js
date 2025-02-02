@@ -61,6 +61,7 @@ const fetchVPNData = async () => {
     return [];
 };
 
+/* github
 // Function to fetch OVPN file names from GitHub
 const fetchGitHubVPNFiles = async () => {
     try {
@@ -76,6 +77,7 @@ const fetchGitHubVPNFiles = async () => {
         return [];
     }
 };
+*/
 
 // Function to fetch VPN data from freeopenvpn.org
 const fetchFreeOpenVPNData = async () => {
@@ -184,14 +186,14 @@ app.get('/', (req, res) => {
 
 // Express endpoint to serve the JSON data
 app.get('/list.json', async (req, res) => {
-    const [fetchedVPNData, gitHubVPNData, freeOpenVPNData, vpnGateData] = await Promise.all([
+    const [fetchedVPNData, freeOpenVPNData, vpnGateData] = await Promise.all([ // removed gitHubVPNData
         fetchVPNData(),
-        fetchGitHubVPNFiles(),
+        // github : fetchGitHubVPNFiles(),
         fetchFreeOpenVPNData(),
         fetchVPNGateData()
     ]);
 
-    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData, ...freeOpenVPNData, ...vpnGateData];
+    const combinedVPNData = [...fetchedVPNData, ...freeOpenVPNData, ...vpnGateData]; // removed ...gitHubVPNData,
     res.json(combinedVPNData);
 });
 
