@@ -70,10 +70,20 @@ app.post('/connect', async (req, res) => {
         const response = await axios.get(profile, { responseType: 'arraybuffer' });
         fs.writeFileSync(tempFile.name, response.data);
 
+        // Get platform-specific OpenVPN executable path
+        const openvpnPath = process.platform === 'win32' 
+            ? path.join(__dirname, 'openvpn.exe')
+            : 'openvpn';
+
         // Connect to the VPN using OpenVPN CLI
-        openvpnProcess = spawn('openvpn', ['--config', tempFile.name]);
+        openvpnProcess = spawn(openvpnPath, ['--config', tempFile.name]);
+
+        let hasResponded = false;
 
         openvpnProcess.on('error', (error) => {
+            if (hasResponded) return;
+            hasResponded = true;
+
             if (error.code === 'ENOENT') {
                 const instructions = getOpenVPNInstallInstructions();
                 io.emit('log', `Error: ${instructions.message}\n${instructions.link}\n`);
@@ -88,15 +98,15 @@ app.post('/connect', async (req, res) => {
         });
 
         openvpnProcess.stdout.on('data', (data) => {
-            const logEntry = data.toString();
-            console.log(`[OpenVPN STDOUT] ${new Date().toISOString()}: ${logEntry}`);
-            io.emit('log', logEntry);
+            const logEntry = data.toString().trim();
+            console.log(`[OpenVPN] ${logEntry}`);
+            io.emit('log', `${logEntry}\n`);
         });
 
         openvpnProcess.stderr.on('data', (data) => {
-            const errorEntry = data.toString();
-            console.error(`[OpenVPN STDERR] ${new Date().toISOString()}: ${errorEntry}`);
-            io.emit('log', errorEntry);
+            const errorEntry = data.toString().trim();
+            console.error(`[OpenVPN] ${errorEntry}`);
+            io.emit('log', `${errorEntry}\n`);
         });
 
         openvpnProcess.on('exit', (code) => {
@@ -106,7 +116,10 @@ app.post('/connect', async (req, res) => {
             io.emit('log', `VPN process exited with code ${code}\n`);
         });
 
-        res.send(`Connecting to ${profile} :P`);
+        if (!hasResponded) {
+            hasResponded = true;
+            res.json({ status: 'connecting', message: `Connecting to ${profile}` });
+        }
     } catch (error) {
         console.error(`Error processing VPN profile: ${error.message}`);
         const errorDetails = {
@@ -125,14 +138,14 @@ app.post('/disconnect', (req, res) => {
     if (openvpnProcess) {
         openvpnProcess.kill();
         openvpnProcess = null; // Reset the process variable
-        res.send('VPN disconnected');
+        res.json({ status: 'success', message: 'VPN disconnected' });
     } else {
-        res.status(400).send('No VPN is currently connected');
+        res.status(400).json({ status: 'error', message: 'No VPN is currently connected' });
     }
 });
 
 app.get('/check-connection', (req, res) => {
-    res.send(openvpnProcess ? 'connected' : 'disconnected');
+    res.json({ status: openvpnProcess ? 'connected' : 'disconnected' });
 });
 
 server.listen(PORT, async () => {

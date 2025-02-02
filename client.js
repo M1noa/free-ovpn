@@ -39,37 +39,59 @@ function displayProfiles(profiles) {
     profiles.forEach((profile, index) => {
         const serverItem = document.createElement('div');
         serverItem.className = 'server-item';
+        const isCloudflareProtected = profile.ovpnLinks[0].includes('ipspeed');
         serverItem.innerHTML = `
             <div class="server-name">${profile.country}</div>
             <div class="server-info">
                 <div>Uptime: ${profile.uptime}</div>
                 <div>Ping: ${profile.ping}</div>
-                <div>IP: ${profile.ip || 'N/A'}</div>
-                <div>Profile: ${profile.ovpnLinks[0].split('/').pop()}</div>
+                <div>${profile.ovpnLinks[0].split('/').pop()}</div>
+                ${isCloudflareProtected ? '<div class="warning">⚠️ This server is Cloudflare-protected and may fail to download</div>' : ''}
             </div>
         `;
 
         serverItem.addEventListener('click', () => {
-            document.querySelectorAll('.server-item').forEach(item => {
-                item.style.background = 'rgba(255, 255, 255, 0.05)';
-            });
-            serverItem.style.background = 'rgba(255, 255, 255, 0.15)';
-            selectedServer = profile.ovpnLinks[0];
-            updateStatus('ready');
+            if (isConnected) {
+                if (!confirm('You are currently connected to a VPN. Do you want to switch to a different server?')) {
+                    return;
+                }
+                // Disconnect first before switching
+                fetch('/disconnect', { method: 'POST' })
+                    .then(() => {
+                        selectServer(serverItem, profile);
+                    })
+                    .catch(error => {
+                        console.error('Error disconnecting:', error);
+                        logContent.textContent += `Error: Could not disconnect from current VPN - ${error.message}\n`;
+                    });
+            } else {
+                selectServer(serverItem, profile);
+            }
         });
 
         serverList.appendChild(serverItem);
     });
 }
 
+function selectServer(serverItem, profile) {
+    document.querySelectorAll('.server-item').forEach(item => {
+        item.style.background = 'rgba(255, 255, 255, 0.05)';
+    });
+    serverItem.style.background = 'rgba(255, 255, 255, 0.15)';
+    selectedServer = profile.ovpnLinks[0];
+    const isCloudflareProtected = profile.ovpnLinks[0].includes('ipspeed');
+    updateStatus('ready', isCloudflareProtected);
+}
+
 // Update UI status
-function updateStatus(state) {
+function updateStatus(state, isCloudflareProtected = false) {
     switch (state) {
         case 'connected':
             statusIcon.innerHTML = '🔒';
             statusTitle.textContent = 'Connected';
-            statusText.textContent = 'VPN connection is active';
+            statusText.textContent = `VPN connection is active\n\nServer: ${selectedServer.split('/').pop()}`;
             connectBtn.textContent = 'Disconnect';
+            connectBtn.disabled = false;
             isConnected = true;
             break;
         case 'disconnected':
@@ -77,20 +99,30 @@ function updateStatus(state) {
             statusTitle.textContent = 'Not Connected';
             statusText.textContent = 'Select a server to connect';
             connectBtn.textContent = 'Connect';
+            connectBtn.disabled = !selectedServer;
             isConnected = false;
             break;
         case 'ready':
-            statusIcon.innerHTML = '🔓';
-            statusTitle.textContent = 'Ready';
-            statusText.textContent = 'Click Connect to start VPN';
+            statusIcon.innerHTML = '⚡';
+            statusTitle.textContent = 'Ready to Connect';
+            statusText.textContent = `Selected Server: ${selectedServer.split('/').pop()}\nDownload URL: ${selectedServer}${isCloudflareProtected ? '\n\n⚠️ Note: This server is Cloudflare-protected and may fail to download' : ''}`;
             connectBtn.textContent = 'Connect';
+            connectBtn.disabled = false;
             isConnected = false;
             break;
         case 'connecting':
-            statusIcon.innerHTML = '⏳';
+            statusIcon.innerHTML = '🔄';
             statusTitle.textContent = 'Connecting...';
-            statusText.textContent = 'Please wait';
+            statusText.textContent = `Attempting to connect to:\n${selectedServer}`;
             connectBtn.disabled = true;
+            break;
+        case 'error':
+            statusIcon.innerHTML = '❌';
+            statusTitle.textContent = 'Connection Error';
+            statusText.textContent = `Failed to connect to:\n${selectedServer}\n\nPlease try another server or check your connection.`;
+            connectBtn.textContent = 'Retry';
+            connectBtn.disabled = false;
+            isConnected = false;
             break;
     }
 }
@@ -104,19 +136,22 @@ async function toggleConnection() {
 
     if (isConnected) {
         try {
+            updateStatus('connecting');
             const response = await fetch('/disconnect', { method: 'POST' });
             if (response.ok) {
                 updateStatus('disconnected');
+                logContent.textContent += 'Successfully disconnected from VPN\n';
             }
         } catch (error) {
             console.error('Error disconnecting:', error);
             logContent.textContent += `Error: Could not disconnect from VPN - ${error.message}\n`;
+            updateStatus('error');
         }
     } else {
         try {
             updateStatus('connecting');
             const profileName = selectedServer.split('/').pop();
-            logContent.textContent += `Connecting to profile: ${profileName}\n`;
+            logContent.textContent += `\nAttempting to connect to profile: ${profileName}\n`;
             
             const response = await fetch('/connect', {
                 method: 'POST',
@@ -124,29 +159,33 @@ async function toggleConnection() {
                 body: JSON.stringify({ profile: selectedServer })
             });
             
+            const data = await response.json();
+            
             if (response.ok) {
                 updateStatus('connected');
+                logContent.textContent += `Successfully connected to ${profileName}\n`;
             } else {
-                const error = await response.json();
-                if (error.instructions) {
-                    logContent.textContent += `${error.instructions.message}\n${error.instructions.link}\n`;
+                if (data.error === 'OpenVPN not installed' && data.instructions) {
+                    logContent.textContent += `Error: OpenVPN is not installed\n${data.instructions.message}\nInstallation command: ${data.instructions.link}\n`;
+                    updateStatus('error');
                 } else {
-                    logContent.textContent += `Failed to connect: ${error.error}\nProfile: ${profileName}\nURL: ${selectedServer}\n`;
+                    logContent.textContent += `Failed to connect: ${data.error || 'Unknown error'}\nProfile: ${profileName}\nURL: ${selectedServer}\n`;
+                    updateStatus('error');
                 }
-                updateStatus('disconnected');
             }
         } catch (error) {
             console.error('Error connecting:', error);
             logContent.textContent += `Error: Could not connect to VPN\nProfile: ${selectedServer.split('/').pop()}\nError details: ${error.message}\n`;
-            updateStatus('disconnected');
+            updateStatus('error');
         }
-        connectBtn.disabled = false;
     }
 }
 
 // Socket.IO event handlers for real-time logs
 socket.on('log', (message) => {
-    logContent.textContent += message;
+    // Preserve whitespace and line breaks
+    const formattedMessage = message.replace(/\n/g, '<br>');
+    logContent.innerHTML += `<span class="log-entry">${formattedMessage}</span>`;
     logContent.scrollTop = logContent.scrollHeight;
 });
 

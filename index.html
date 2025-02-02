@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free OpenVPN Client</title>
+    <title>ɱVPN</title>
     <style>
         :root {
             --primary: #6366f1;
@@ -43,7 +43,73 @@
             font-size: 1.5rem;
             font-weight: 600;
             color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .theme-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
             margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .mode-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .mode-btn.active {
+            background: var(--primary);
+            border-color: var(--secondary);
+        }
+
+        .color-selector {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.5rem;
+            justify-content: center;
+        }
+
+        .color-btn {
+            width: 2rem;
+            height: 2rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .color-btn.active {
+            outline: 1px solid var(--text);
+            transform: scale(1.1);
         }
 
         .search-container {
@@ -168,6 +234,15 @@
             transform: translateY(-2px);
         }
 
+        .warning {
+            color: #fbbf24;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
         .server-name {
             font-weight: 500;
             margin-bottom: 0.5rem;
@@ -176,6 +251,9 @@
         .server-info {
             font-size: 0.875rem;
             color: var(--text-secondary);
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
         }
 
         .main-content {
@@ -192,7 +270,7 @@
             border-radius: 16px;
             padding: 2rem;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 2rem;
         }
 
@@ -204,6 +282,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .status-info {
+            flex: 1;
         }
 
         .status-info h2 {
@@ -212,6 +295,8 @@
 
         .status-info p {
             color: var(--text-secondary);
+            white-space: pre-line;
+            line-height: 1.5;
         }
 
         .connect-btn {
@@ -233,25 +318,34 @@
 
         .log-panel {
             background: var(--surface);
-            backdrop-filter: blur(12px);
-            border-radius: 16px;
-            padding: 1.5rem;
-            flex: 1;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 2rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            height: calc(100vh - 300px);
+            overflow: hidden;
         }
 
         .log-title {
-            margin-bottom: 1rem;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
         }
 
         .log-content {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 0.25rem;
+            padding: 1rem;
             font-family: monospace;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             line-height: 1.5;
-            color: var(--text-secondary);
+            color: var(--text);
+            overflow-y: auto;
+            flex-grow: 1;
+            white-space: pre-wrap;
         }
     </style>
 </head>
@@ -272,7 +366,20 @@
         </div>
     </div>
     <div class="sidebar">
-        <div class="logo">Free OpenVPN</div>
+        <div class="logo">ɱVPN</div>
+        <div class="theme-selector">
+            <div class="mode-selector">
+                <button class="mode-btn" data-mode="light">☀️</button>
+                <button class="mode-btn" data-mode="dark">🌙</button>
+            </div>
+            <div class="color-selector">
+                <button class="color-btn" style="background: #10b981;" data-color="green"></button>
+                <button class="color-btn" style="background: #fbbf24;" data-color="yellow"></button>
+                <button class="color-btn" style="background: #3b82f6;" data-color="blue"></button>
+                <button class="color-btn" style="background: #8b5cf6;" data-color="purple"></button>
+                <button class="color-btn" style="background: #ef4444;" data-color="red"></button>
+            </div>
+        </div>
         <div class="search-container">
             <input type="text" class="search-input" placeholder="Search servers..." />
         </div>
@@ -302,6 +409,99 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Theme management
+        const modes = {
+            'light': {
+                background: '#e4daeb',
+                surface: 'rgba(75, 73, 82, 0.1)',
+                text: '#0f172a',
+                textSecondary: '#475569'
+            },
+            'dark': {
+                background: '#0f172a',
+                surface: 'rgba(30, 41, 59, 0.7)',
+                text: '#e2e8f0',
+                textSecondary: '#94a3b8'
+            }
+        };
+
+        const accentColors = {
+            'green': {
+                primary: '#10b981',
+                secondary: '#34d399'
+            },
+            'yellow': {
+                primary: '#fbbf24',
+                secondary: '#fcd34d'
+            },
+            'blue': {
+                primary: '#3b82f6',
+                secondary: '#60a5fa'
+            },
+            'purple': {
+                primary: '#8b5cf6',
+                secondary: '#a78bfa'
+            },
+            'red': {
+                primary: '#ef4444',
+                secondary: '#f87171'
+            }
+        };
+
+        let currentMode = 'dark';
+        let currentAccentColor = 'blue';
+
+        // Load saved preferences from localStorage
+        const savedMode = localStorage.getItem('theme-mode') || 'dark';
+        const savedColor = localStorage.getItem('theme-color') || 'blue';
+
+        // Initialize theme with saved preferences
+        setMode(savedMode);
+        setAccentColor(savedColor);
+
+        // Add event listeners for theme controls
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => setMode(btn.dataset.mode));
+        });
+
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.addEventListener('click', () => setAccentColor(btn.dataset.color));
+        });
+
+        function setMode(modeName) {
+            const mode = modes[modeName];
+            const root = document.documentElement;
+            currentMode = modeName;
+            localStorage.setItem('theme-mode', modeName);
+            
+            root.style.setProperty('--background', mode.background);
+            root.style.setProperty('--surface', mode.surface);
+            root.style.setProperty('--text', mode.text);
+            root.style.setProperty('--text-secondary', mode.textSecondary);
+
+            // Update active state of mode buttons
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === modeName);
+            });
+        }
+
+        function setAccentColor(colorName) {
+            const color = accentColors[colorName];
+            const root = document.documentElement;
+            currentAccentColor = colorName;
+            localStorage.setItem('theme-color', colorName);
+            
+            root.style.setProperty('--primary', color.primary);
+            root.style.setProperty('--secondary', color.secondary);
+
+            // Update active state of color buttons
+            document.querySelectorAll('.color-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.color === colorName);
+            });
+        }
+
+    </script>
     <script src="client.js"></script>
 </body>
 </html>
