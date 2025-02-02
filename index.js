@@ -2,21 +2,20 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const dotenv = require('dotenv');
 const express = require('express');
+const NodeCache = require('node-cache');
 
 dotenv.config();
 
 const app = express();
+const cache = new NodeCache({ stdTTL: 3600 }); // Cache for 1 hour
 
-let vpnData = [];
-
-// Function to fetch VPN data from the website
+// Function to fetch VPN data from ipspeed.info
 const fetchVPNData = async () => {
     const maxRetries = 10;
     const baseDelay = 15;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
-            console.log(`Attempt ${attempt + 1} of ${maxRetries}`);
             const response = await axios.get('https://ipspeed.info/freevpn_openvpn.php', {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -25,50 +24,19 @@ const fetchVPNData = async () => {
                     'Accept-Encoding': 'gzip, deflate, br',
                     'Connection': 'keep-alive',
                     'Cache-Control': 'max-age=0',
-                    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                    'Sec-Ch-Ua-Mobile': '?0',
-                    'Sec-Ch-Ua-Platform': '"macOS"',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Upgrade-Insecure-Requests': '1',
                     'Cookie': 'IPSpeed_lang=en'
                 },
                 timeout: 10000,
                 maxRedirects: 10,
-                followRedirect: true,
-                validateStatus: function (status) {
-                    return status >= 200 && status < 400;
-                }
+                validateStatus: status => status >= 200 && status < 400
             });
-            console.log(`Response received with status: ${response.status}`);
-            if (response.request?.res?.responseUrl) {
-                console.log(`Final URL after redirects: ${response.request.res.responseUrl}`);
-            }
-            console.log('HTML response received.');
 
-            const html = response.data;
-            if (!html || typeof html !== 'string' || html.trim().length === 0) {
-                throw new Error('Empty or invalid HTML response');
-            }
-
-            console.log('Starting HTML parsing...');
-            const $ = cheerio.load(html);
+            const $ = cheerio.load(response.data);
             const newData = [];
-
-            const totalDivs = $('div.list').length;
-            console.log(`Total div.list elements found: ${totalDivs}`);
-
-            if (totalDivs === 0) {
-                throw new Error('No VPN data elements found in the response');
-            }
 
             $('div.list').each(function(index) {
                 if ($(this).attr('style')?.includes('width: 263px') && !$(this).find('a').length) {
                     const location = $(this).text().trim();
-                    console.log(`Found location: ${location}`);
-
                     const linksDiv = $(this).next('div.list');
                     const links = linksDiv.find('a').map((_, link) => {
                         const href = $(link).attr('href');
@@ -79,58 +47,32 @@ const fetchVPNData = async () => {
                     const ping = linksDiv.next('div.list').next('div.list').text().trim();
 
                     if (location && links.length > 0) {
-                        newData.push({
-                            country: location,
-                            ovpnLinks: links,
-                            uptime,
-                            ping
-                        });
+                        newData.push({ country: location, ovpnLinks: links, uptime, ping });
                     }
                 }
             });
 
-            if (newData.length === 0) {
-                throw new Error('No VPN data could be parsed from the response');
-            }
-
-            console.log(`Parsed VPN data: ${JSON.stringify(newData, null, 2)}`);
             return newData;
         } catch (error) {
-            console.error(`Attempt ${attempt + 1} failed:`, error.message);
-            if (attempt === maxRetries - 1) {
-                console.error('All retry attempts failed');
-                return [];
-            }
-            const delay = baseDelay * Math.pow(2, attempt);
-            console.log(`Waiting ${delay}ms before next attempt...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            if (attempt === maxRetries - 1) return [];
+            await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, attempt)));
         }
     }
     return [];
 };
 
-// Function to fetch OVPN file names from the GitHub repository
+// Function to fetch OVPN file names from GitHub
 const fetchGitHubVPNFiles = async () => {
     try {
-        console.log('Requesting OVPN files from GitHub...');
         const response = await axios.get('https://api.github.com/repos/M1noa/free-ovpn/contents/conf?ref=vpn-list-api');
-        console.log('GitHub response received.');
-
         const files = response.data;
-        const fileNames = files.map(file => file.name);
-
-        // Creating a format similar to the fetched VPN data
-        const gitHubVPNData = fileNames.map(fileName => ({
+        return files.map(file => ({
             country: 'USA',
-            ovpnLinks: [`https://github.com/M1noa/free-ovpn/raw/vpn-list-api/conf/${fileName}`], // Direct link to the OVPN file
+            ovpnLinks: [`https://github.com/M1noa/free-ovpn/raw/vpn-list-api/conf/${file.name}`],
             uptime: 'Unknown',
             ping: 'Github Upload'
         }));
-
-        console.log(`GitHub OVPN files: ${JSON.stringify(gitHubVPNData, null, 2)}`);
-        return gitHubVPNData;
     } catch (error) {
-        console.error('Error fetching OVPN files from GitHub:', error);
         return [];
     }
 };
@@ -138,7 +80,6 @@ const fetchGitHubVPNFiles = async () => {
 // Function to fetch VPN data from freeopenvpn.org
 const fetchFreeOpenVPNData = async () => {
     try {
-        console.log('Fetching VPN data from freeopenvpn.org...');
         const response = await axios.get('https://www.freeopenvpn.org/private.php?cntid=USA', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -151,30 +92,90 @@ const fetchFreeOpenVPNData = async () => {
         const $ = cheerio.load(response.data);
         const ovpnLinks = [];
 
-        // Extract OVPN profile links
         $('a[href*=".ovpn"]').each(function() {
             const href = $(this).attr('href');
-            if (href) {
-                ovpnLinks.push('https://www.freeopenvpn.org' + href);
-            }
+            if (href) ovpnLinks.push('https://www.freeopenvpn.org' + href);
         });
 
-        if (ovpnLinks.length === 0) {
-            throw new Error('No OVPN links found on freeopenvpn.org');
-        }
-
-        // Format data to match existing structure
-        return [{
+        return ovpnLinks.length > 0 ? [{
             country: 'USA',
-            ovpnLinks: ovpnLinks,
+            ovpnLinks,
             uptime: 'Updated Daily',
             ping: 'freeopenvpn.org'
-        }];
+        }] : [];
     } catch (error) {
-        console.error('Error fetching from freeopenvpn.org:', error);
         return [];
     }
 };
+
+// Function to fetch and parse VPNGate data
+const fetchVPNGateData = async () => {
+    try {
+        const response = await axios.get('http://www.vpngate.net/api/iphone/');
+        const csvData = response.data.split('\n').slice(2, -2); // Remove header and footer
+        
+        return csvData.map(line => {
+            const fields = line.split(',');
+            if (fields.length < 9) return null; // Skip invalid entries
+            
+            const [
+                hostName,
+                ip,
+                score,
+                ping,
+                speed,
+                countryLong,
+                countryShort,
+                numVpnSessions,
+                uptime,
+                totalUsers,
+                totalTraffic,
+                logType,
+                operator,
+                message,
+                base64Config
+            ] = fields;
+
+            return {
+                country: countryLong || 'Unknown',
+                ovpnLinks: [`https://vpn.minoa.cat/vpngate/${ip}.ovpn`],
+                uptime: `${Math.round(parseInt(uptime) / (60 * 60 * 24))} days`,
+                ping: `${ping} ms`
+            };
+        }).filter(Boolean); // Remove null entries
+    } catch (error) {
+        console.error('Error fetching VPNGate data:', error);
+        return [];
+    }
+};
+
+// VPNGate OVPN config endpoint
+app.get('/vpngate/:ip.ovpn', async (req, res) => {
+    const { ip } = req.params;
+    const cacheKey = `vpngate_${ip}`;
+    
+    let config = cache.get(cacheKey);
+    if (!config) {
+        try {
+            const response = await axios.get('http://www.vpngate.net/api/iphone/');
+            const csvData = response.data.split('\n').slice(2, -2);
+            const vpnData = csvData.find(line => line.split(',')[3] === ip);
+            
+            if (!vpnData) {
+                return res.status(404).send('VPN configuration not found');
+            }
+            
+            config = Buffer.from(vpnData.split(',')[8], 'base64').toString();
+            cache.set(cacheKey, config);
+        } catch (error) {
+            return res.status(500).send('Error fetching VPN configuration');
+        }
+    }
+    
+    res.setHeader('Content-Type', 'application/x-openvpn-profile');
+    res.setHeader('Content-Disposition', `attachment; filename=${ip}.ovpn`);
+    res.send(config);
+});
 
 // Serve the index.html file
 app.get('/', (req, res) => {
@@ -183,24 +184,16 @@ app.get('/', (req, res) => {
 
 // Express endpoint to serve the JSON data
 app.get('/list.json', async (req, res) => {
-    console.log('Received request for /list.json');
-
-    // Fetch VPN data from all sources
-    const [fetchedVPNData, gitHubVPNData, freeOpenVPNData] = await Promise.all([
+    const [fetchedVPNData, gitHubVPNData, freeOpenVPNData, vpnGateData] = await Promise.all([
         fetchVPNData(),
         fetchGitHubVPNFiles(),
-        fetchFreeOpenVPNData()
+        fetchFreeOpenVPNData(),
+        fetchVPNGateData()
     ]);
 
-    // Combine all VPN data
-    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData, ...freeOpenVPNData];
-
-    // Serve the combined VPN data
+    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData, ...freeOpenVPNData, ...vpnGateData];
     res.json(combinedVPNData);
 });
 
-// Start the server
 const port = process.env.PORT || 3000;
-app.listen(port, async () => {
-    console.log(`Server is running on port ${port}`);
-});
+app.listen(port, () => {});
