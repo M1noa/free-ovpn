@@ -11,48 +11,102 @@ let vpnData = [];
 
 // Function to fetch VPN data from the website
 const fetchVPNData = async () => {
-    try {
-        console.log('Requesting HTML from the VPN site...');
-        const response = await axios.get('https://ipspeed.info/freevpn_openvpn.php?language=en');
-        console.log('HTML response received.');
+    const maxRetries = 10;
+    const baseDelay = 15;
 
-        const html = response.data;
-        console.log('HTML Content:', html); // Log the raw HTML content for debugging
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            console.log(`Attempt ${attempt + 1} of ${maxRetries}`);
+            const response = await axios.get('https://ipspeed.info/freevpn_openvpn.php', {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Cache-Control': 'max-age=0',
+                    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                    'Sec-Ch-Ua-Mobile': '?0',
+                    'Sec-Ch-Ua-Platform': '"macOS"',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Cookie': 'IPSpeed_lang=en'
+                },
+                timeout: 10000,
+                maxRedirects: 10,
+                followRedirect: true,
+                validateStatus: function (status) {
+                    return status >= 200 && status < 400;
+                }
+            });
+            console.log(`Response received with status: ${response.status}`);
+            if (response.request?.res?.responseUrl) {
+                console.log(`Final URL after redirects: ${response.request.res.responseUrl}`);
+            }
+            console.log('HTML response received.');
 
-        const $ = cheerio.load(html);
-        const newData = [];
+            const html = response.data;
+            if (!html || typeof html !== 'string' || html.trim().length === 0) {
+                throw new Error('Empty or invalid HTML response');
+            }
 
-        // Parsing logic
-        const rows = $('.area .list').parent().children('.list'); // Get all the list items
-        for (let i = 0; i < rows.length; i += 4) { // Each entry has 4 elements
-            const location = $(rows[i]).text().trim();
-            const ovpnLinks = $(rows[i + 1]).find('a'); // Find all <a> elements for OVPN links
-            const uptime = $(rows[i + 2]).text().trim();
-            const ping = $(rows[i + 3]).text().trim();
+            console.log('Starting HTML parsing...');
+            const $ = cheerio.load(html);
+            const newData = [];
 
-            // Extracting all OVPN links for the current location
-            const links = [];
-            ovpnLinks.each((index, link) => {
-                const ovpnLink = `https://ipspeed.info${$(link).attr('href')}`; // Complete link
-                links.push(ovpnLink);
+            const totalDivs = $('div.list').length;
+            console.log(`Total div.list elements found: ${totalDivs}`);
+
+            if (totalDivs === 0) {
+                throw new Error('No VPN data elements found in the response');
+            }
+
+            $('div.list').each(function(index) {
+                if ($(this).attr('style')?.includes('width: 263px') && !$(this).find('a').length) {
+                    const location = $(this).text().trim();
+                    console.log(`Found location: ${location}`);
+
+                    const linksDiv = $(this).next('div.list');
+                    const links = linksDiv.find('a').map((_, link) => {
+                        const href = $(link).attr('href');
+                        return href ? href : null;
+                    }).get().filter(Boolean);
+
+                    const uptime = linksDiv.next('div.list').text().trim();
+                    const ping = linksDiv.next('div.list').next('div.list').text().trim();
+
+                    if (location && links.length > 0) {
+                        newData.push({
+                            country: location,
+                            ovpnLinks: links,
+                            uptime,
+                            ping
+                        });
+                    }
+                }
             });
 
-            if (location && links.length > 0) { // Only add if location and links exist
-                newData.push({
-                    country: location,
-                    ovpnLinks: links, // List of all OVPN links
-                    uptime,
-                    ping,
-                });
+            if (newData.length === 0) {
+                throw new Error('No VPN data could be parsed from the response');
             }
-        }
 
-        console.log(`Parsed VPN data: ${JSON.stringify(newData, null, 2)}`);
-        return newData;
-    } catch (error) {
-        console.error('Error fetching VPN data:', error);
-        return [];
+            console.log(`Parsed VPN data: ${JSON.stringify(newData, null, 2)}`);
+            return newData;
+        } catch (error) {
+            console.error(`Attempt ${attempt + 1} failed:`, error.message);
+            if (attempt === maxRetries - 1) {
+                console.error('All retry attempts failed');
+                return [];
+            }
+            const delay = baseDelay * Math.pow(2, attempt);
+            console.log(`Waiting ${delay}ms before next attempt...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
     }
+    return [];
 };
 
 // Function to fetch OVPN file names from the GitHub repository
@@ -81,6 +135,47 @@ const fetchGitHubVPNFiles = async () => {
     }
 };
 
+// Function to fetch VPN data from freeopenvpn.org
+const fetchFreeOpenVPNData = async () => {
+    try {
+        console.log('Fetching VPN data from freeopenvpn.org...');
+        const response = await axios.get('https://www.freeopenvpn.org/private.php?cntid=USA', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9'
+            },
+            timeout: 10000
+        });
+
+        const $ = cheerio.load(response.data);
+        const ovpnLinks = [];
+
+        // Extract OVPN profile links
+        $('a[href*=".ovpn"]').each(function() {
+            const href = $(this).attr('href');
+            if (href) {
+                ovpnLinks.push('https://www.freeopenvpn.org' + href);
+            }
+        });
+
+        if (ovpnLinks.length === 0) {
+            throw new Error('No OVPN links found on freeopenvpn.org');
+        }
+
+        // Format data to match existing structure
+        return [{
+            country: 'USA',
+            ovpnLinks: ovpnLinks,
+            uptime: 'Updated Daily',
+            ping: 'freeopenvpn.org'
+        }];
+    } catch (error) {
+        console.error('Error fetching from freeopenvpn.org:', error);
+        return [];
+    }
+};
+
 // Serve the index.html file
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
@@ -90,14 +185,15 @@ app.get('/', (req, res) => {
 app.get('/list.json', async (req, res) => {
     console.log('Received request for /list.json');
 
-    // Fetch new VPN data for every request
-    const fetchedVPNData = await fetchVPNData();
+    // Fetch VPN data from all sources
+    const [fetchedVPNData, gitHubVPNData, freeOpenVPNData] = await Promise.all([
+        fetchVPNData(),
+        fetchGitHubVPNFiles(),
+        fetchFreeOpenVPNData()
+    ]);
 
-    // Fetch GitHub OVPN file names
-    const gitHubVPNData = await fetchGitHubVPNFiles();
-
-    // Combine the GitHub VPN data and the fetched VPN data
-    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData];
+    // Combine all VPN data
+    const combinedVPNData = [...gitHubVPNData, ...fetchedVPNData, ...freeOpenVPNData];
 
     // Serve the combined VPN data
     res.json(combinedVPNData);
