@@ -1,3 +1,5 @@
+# !! this kinda works on some deices.. its quite buggy and sucky !!
+
 # free-ovpn
 gets openvpn profiles from an api and has a gui to use them
 
